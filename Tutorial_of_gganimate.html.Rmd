@@ -1,0 +1,367 @@
+---
+title: "Introduction to gganimate"
+author: 'Shaofei Wang UNI:sw3316 '
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+```
+
+# 1 Introduction
+
+Love `ggplot` visualization but wish it had more moving parts? `gganimate` could help you with that. This extension package animates `ggplot2` visualizations, treating the “frame” (that is, the time point in an animation) as an *aesthetic* in the same way that ggplot2 treats x, y, color, etc. The result is an animation built from various frames of the same plot.
+
+As you can see in the following tutorial, `gganimate` plots keep the axis limits and legends fixed, so that only the points move—keeping the viewer’s attention focused on how the data changes over time. This also means that, unlike the `animation` package (where you create several plots and combine them), with gganimate you only need to build the plot -- including the axes and legend — once.
+
+`gganimate` also lets you save the animation to a file, such as an GIF, video, or an animated webpage, for use outside of RStudio or a Notebook. However, the document of `gganimate` contains such a brief introduction that is not friendly enough for beginners. So, I'll try be best to write a simple and helpful tutorial and provide the resources related to `gganimate` as well.
+
+One thing should be noticed is that there are 2 versions of the `gganimate` package. Personally, I recommed to use the [`current version`](https://github.com/thomasp85/gganimate). The old one developed by [David Robinson](https://github.com/dgrtwo) had a very different API and is no longer supported for bugfixes, but you can install the old version if you want. The latest version of the old API is available as a [GitHub release](https://github.com/thomasp85/gganimate/releases/tag/v0.1.1). 
+
+
+# 2 Instalition
+
+`gganimate` is currently GitHub-only, you can install it using the `devtools` package
+
+```{r, eval=FALSE}
+# install.packages('devtools')
+devtools::install_github('thomasp85/gganimate')
+```
+
+# 3 Grammar
+
+`gganimate` extends the grammar of graphics as implemented by
+[`ggplot2`](https://github.com/tidyverse/ggplot2) to include the description of
+animation. It provides a range of new grammar classes which enables the plot object to change with time. The following 5 types of function covers most of your needs, and the detailed descriptions of  some functions and examples will be given later.
+
+- `transition_*()` defines how the data should be spread out and how it relates
+  to itself across time.
+- `view_*()` defines how the positional scales should change along the 
+  animation.
+- `shadow_*()` defines how data from other points in time should be presented in
+  the given point in time.
+- `enter_*()`/`exit_*()` defines how new data should appear and how old data 
+  should disappear during the course of the animation.
+- `ease_aes()` defines how different aesthetics should be eased during 
+  transitions.
+  
+## 3.1 transition_*()
+
+### 3.1.1 transition_reveal()
+
+#### Description ####
+
+This transition allows data gradually appearing, based on a given time dimension. transition_reveal() calculates intermediary values at exact positions. It further keeps old data for path and polygon type layers so that they are gradually building up.
+
+#### Usage ####
+
+    transition_reveal(id, along, range = NULL, keep_last = TRUE)
+
+#### Arguments ####
+
+- `transition_*()` defines how the data should be spread out and how it relates
+  to itself across time.
+- `view_*()` defines how the positional scales should change along the 
+  animation.
+  
+- `id`: An unquoted expression giving the id of the row (usually the same as the group aesthetic for lines and polygons)
+
+- `along`: An unquoted expression giving the dimension to tween along. For a gradually revealing time series this should be set to the same as the x aesthetic.
+
+- `range:` The time range to animate. If NULL it will be set to the range of along
+
+- `keep_last`: For non-path/polygon layers should the last row be kept for subsequent frames.
+
+#### Examples ####
+
+```{r, cache=TRUE}
+library(ggplot2)
+library(gganimate)
+
+air = airquality
+air$Month <- as.factor(air$Month)
+
+p1 <- ggplot(air, aes(Day, Temp, group = Month, color = Month)) +
+  geom_line() +
+  transition_reveal(Month, Day)
+p1
+```
+
+### 3.1.2 transition_states()
+
+#### Description ####
+
+This transition splits your data into multiple states based on the levels in a given column, much like ggplot2::facet_wrap() splits up the data in multiple panels. It then tweens between the defined states and pauses at each state. Layers with data without the specified column will be kept constant during the animation (again, mimicking facet_wrap).
+
+#### Usage ####
+
+    transition_states(states, transition_length, state_length, wrap = TRUE)
+
+#### Arguments ####
+
+- `states`: The unquoted name of the column holding the state levels in the data.
+
+- `transition_length`: The relative length of the transition. Will be recycled to match the number of states in the data
+
+- `state_length`:	The relative length of the pause at the states. Will be recycled to match the number of states in the data
+
+- `wrap`:	Should the animation wrap-around? If TRUE the last state will be transitioned into the first.
+
+#### Examples ####
+
+```{r, cache=TRUE}
+p2 <- ggplot(iris, aes(Sepal.Width, Petal.Width)) +
+  geom_point() +
+  labs(title = "{closest_state}") +
+  transition_states(Species, transition_length = 3, state_length = 1)
+p2
+```
+
+### 3.1.3 transition_time()
+
+#### Description ####
+
+This is a variant of transition_states() that is intended for data where the states are representing specific point in time. The transition length between the states will be set to correspond to the actual time difference between them.
+
+#### Usage ####
+
+    transition_time(time, range = NULL)
+
+#### Arguments ####
+
+- `time`: An unquoted expression giving the time, and thus state membership, of each observation.
+
+- `range`: The time range to animate. If NULL it will be set to the range of time
+
+#### Examples ####
+
+```{r, cache=TRUE}
+p3 <- ggplot(airquality, aes(Day, Temp)) +
+  geom_point(color = 'red') +
+  geom_smooth() + 
+  labs(title = 'Month: {frame_time}', x = 'Day', y = 'Temperature') +
+  transition_time(Month) +
+  ease_aes('linear')
+p3
+
+```
+
+
+## 4.1 shadow_*()
+
+### 4.1.1 shadow_wake()
+
+#### Description ####
+
+This shadow is meant to draw a small wake after data by showing the latest frames up to the current. You can choose to gradually diminish the size and/or opacity of the shadow. The length of the wake is not given in absolute frames as that would make the animation susceptible to changes in the framerate. Instead it is given as a proportion of the total length of the animation.
+
+#### Usage ####
+
+    shadow_wake(wake_length, size = TRUE, alpha = TRUE, colour = NULL,
+      fill = NULL, falloff = "cubic-in", wrap = TRUE,
+      exclude_layer = NULL, exclude_phase = c("enter", "exit"))
+
+#### Arguments ####
+- `wake_length`: A number between 0 and 1 giving the length of the wake, in relation to the total number of frames.
+
+- `size`:	Numeric indicating the size the wake should end on. If NULL then size is not modified. Can also be a boolean with TRUE beeing equal 0 and FALSE beeing equal to NULL
+
+- `alpha`: as size but for alpha modification of the wake
+
+- `colour`, fill:	colour or fill the wake should end on. If NULL they are not modified.
+
+- `falloff`:	An easing function that control how size and/or alpha should change.
+
+- `wrap`:	Should the shadow wrap around, so that the first frame will get shadows from the end of the animation.
+
+- `exclude_layer`:	Indexes of layers that should be excluded.
+
+- `exclude_phase`:	Element phases that should not get a shadow. Possible values are 'enter', 'exit', 'static', 'transition', and 'raw'. If NULL all phases will be included. Defaults to 'enter' and 'exit'
+
+#### Examples ####
+
+```{r, cache=TRUE}
+# `shadow_wake` can be combined with `transition_states` to show
+# motion of geoms as they are in transition with respect to the selected state.
+
+p4 <- ggplot(iris, aes(Petal.Length, Sepal.Length)) +
+  geom_point() +
+  labs(title = "{closest_state}") +
+  transition_states(Species, transition_length = 4, state_length = 1) +
+  shadow_wake(wake_length = 0.05)
+p4
+```
+
+
+## 5.1 ease_aes
+
+#### Description ####
+
+Easing defines how a value change to another during tweening. Will it progress linearly, or maybe start slowly and then build up momentum. In gganimate, each aesthetic or computed variable can be tweened with individual easing functions using the ease_aes() function. All easing functions implemented in tweenr are available, see tweenr::display_ease for an overview.
+
+#### Usage ####
+
+    ease_aes(default, ...)
+
+#### Arguments ####
+
+- `default`: The default easing function to use
+
+- `...`: Override easing for specific aesthetics
+
+
+## 5.1 enter_*()
+
+#### Description ####
+
+The purpose of enter_*() and exit_*() is to control what happens with data that does not persist during a tween. In general the non-persistent data is transformed to an invisible version that can be tweened to, e.g. by setting the opacity to 0 or be moving the element off-screen. It is possible to define your own transformations, or rely on some of the build in effects.
+
+#### Usage ####
+
+    enter_manual(default, ...)
+    
+    enter_appear(early = FALSE, ...)
+    
+    enter_fade(...)
+    
+    enter_grow(fade = FALSE, ...)
+    
+    exit_manual(default, ...)
+    
+    exit_disappear(early = FALSE, ...)
+    
+    exit_fade(...)
+    
+    exit_shrink(fade = FALSE, ...)
+
+#### Arguments ####
+
+- `default`:	A default transformation to use
+
+- `...`:	Additional specific transformations either named by the geom (e.g. bar, or by its position in the layer stack, e.g. "2")
+
+- `early`:	Should the data appear in the beginning of the transition or in the end
+
+- `fade`:	Should the elements fade in/out in addition to the effect
+
+
+# 6 Eaxmple of using `gganimate` 
+
+```{r message=FALSE, cache=TRUE}
+library(ggplot2)
+library(gganimate)
+
+p5 <- ggplot(mtcars, aes(factor(cyl), mpg)) + 
+  geom_boxplot() + 
+  # Here comes the gganimate code
+  transition_states(
+    gear,
+    transition_length = 2,
+    state_length = 1
+  ) +
+  enter_fade() + 
+  exit_shrink() +
+  ease_aes('sine-in-out')
+p5
+```
+
+Here we take a simple boxplot of fuel consumption as a function of cylinders and
+lets it transition between the number of gears available in the cars. As this is
+a discrete split (`gear` being best described as an ordered factor) we use 
+`transition_states` and provides a relative length to use for transition and 
+state view. As not all combinations of data is present there are states missing
+a box. We define that when a box appears it should fade into view, whereas at 
+should shrink away when it disappear. Lastly we decide to use a sinusoidal 
+easing for all our aesthetics (here, only `y` is changing)
+
+# 7 Another Example
+
+## 7.1
+```{r, cache=TRUE}
+library(gapminder)
+
+p6 <- ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, colour = country)) +
+  geom_point(alpha = 0.7, show.legend = FALSE) +
+  scale_colour_manual(values = country_colors) +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  facet_wrap(~continent) +
+  # Here comes the gganimate specific bits
+  labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+  transition_time(year) +
+  ease_aes('linear')
+p6
+```
+
+In this example we see the use of `transition_time()` which can be used with 
+continuous variables such as `year`. With this transition it is not necessary to 
+provide transition and state length as the "transition variable" provides this
+directly (e.g. it should take twice as long to transition between 1980 and 1990
+compared to 2000 to 2005). We also see the use of string literal interpolation 
+in titles. `gganimate` lets you specify variables to evaluate inside titles and
+different transitions provide different type of information to use.
+
+## 7.2
+```{r, cache=TRUE}
+p7 <- ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, color = continent, frame = year)) +
+  geom_point() +
+  scale_x_log10() +
+  labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+  transition_time(year) +
+  ease_aes('linear')
+p7
+```
+
+The graph above shows the change of relationships by year between the variable lifeExp (life expectancy at birth) and the variable gdpPercap (GDP per capita). Different color represents different continents.
+
+## 7.3
+```{r, cache=TRUE}
+p8 <- ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop)) +
+  geom_point() +
+  geom_smooth(aes(group = year), method = "lm", show.legend = FALSE) +
+  facet_wrap(~continent, scales = "free") +
+  scale_x_log10() +
+  transition_time(year) +
+  ease_aes('linear')
+p8
+
+```
+
+
+## 7.4
+```{r, cache=TRUE}
+p9 <- ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, frame = continent)) +
+  geom_point() +
+  scale_x_log10() + 
+  labs(title = "{closest_state}") +
+  transition_states(continent, transition_length = 3, state_length = 1)
+p9
+```
+
+This tutorial is just a simple indtroduction of gganimate and may contain some errors. I list the refences related to gganimate below, which may help you learn more about it.
+
+# References
+https://rdrr.io/github/thomasp85/gganimate/api/
+
+https://rdrr.io/github/thomasp85/gganimate/man/
+
+https://github.com/thomasp85/gganimate
+
+https://blog.modeanalytics.com/r-ggplot-extension-packages/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
