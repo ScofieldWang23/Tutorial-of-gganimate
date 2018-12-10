@@ -11,6 +11,7 @@ knitr::opts_chunk$set(message = FALSE,
                       warning = FALSE)
 ```
 
+
 # 1 Introduction
 
 Love `ggplot` visualization but wish it had more moving parts? `gganimate` could help you with that. This extension package animates `ggplot2` visualizations, treating the “frame” (that is, the time point in an animation) as an *aesthetic* in the same way that ggplot2 treats x, y, color, etc. The result is an animation built from various frames of the same plot.
